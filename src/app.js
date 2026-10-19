@@ -5,6 +5,18 @@ const tasksRouter = require('./routes/tasks');
 
 const app = express();
 
+// Display incoming HTTP requests in development mode (method, path, status code, response time)
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'development') {
+    const start = process.hrtime.bigint();
+    res.on('finish', () => {
+      const elapsedMs = (Number(process.hrtime.bigint() - start) / 1e6).toFixed(2);
+      console.log(`[dev] ${req.method} ${req.originalUrl || req.url} ${res.statusCode} ${elapsedMs}ms`);
+    });
+  }
+  next();
+});
+
 // Parse JSON request bodies
 app.use(express.json());
 
