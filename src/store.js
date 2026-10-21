@@ -1,124 +1,333 @@
+const mongoose = require('mongoose');
+const { Task, VALID_PRIORITIES, VALID_STATUSES } = require('./models/Task');
+const { Counter, getNextSequence, setSequence } = require('./models/Counter');
+
 /**
- * In-memory task store.
- * Note: Data is kept in-memory and will reset when the application restarts.
+ * Checks if Mongoose is currently connected to MongoDB.
+ * @returns {boolean}
  */
+function isDbConnected() {
+  return mongoose.connection.readyState === 1;
+}
 
-let currentId = 1;
+// In-memory test double implementation for isolated unit testing
+const testDoubleStore = {
+  currentId: 1,
+  tasks: [],
 
-// Seed realistic initial tasks for immediate usability
-let tasks = [
-  {
-    id: currentId++,
-    title: 'Set up local container environment',
-    description: 'Verify Node.js runtime and test scripts before building the container image.',
-    priority: 'high',
-    status: 'completed',
-    createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 12).toISOString()
+  getAll({ status, priority, search } = {}) {
+    let result = [...this.tasks];
+
+    if (status && status !== 'all') {
+      result = result.filter(t => t.status.toLowerCase() === status.toLowerCase());
+    }
+
+    if (priority && priority !== 'all') {
+      result = result.filter(t => t.priority.toLowerCase() === priority.toLowerCase());
+    }
+
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter(
+        t => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q))
+      );
+    }
+
+    return result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   },
-  {
-    id: currentId++,
-    title: 'Establish automated testing baseline',
-    description: 'Validate /health and task CRUD operations using Node.js built-in test runner.',
-    priority: 'medium',
-    status: 'in-progress',
-    createdAt: new Date(Date.now() - 3600000 * 10).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 2).toISOString()
+
+  getById(id) {
+    const numericId = Number(id);
+    return this.tasks.find(t => t.id === numericId) || null;
   },
-  {
-    id: currentId++,
-    title: 'Prepare Kubernetes manifest definitions',
-    description: 'Draft deployment and service configurations for staging cluster deployment.',
-    priority: 'low',
-    status: 'todo',
-    createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-    updatedAt: new Date(Date.now() - 3600000 * 4).toISOString()
+
+  create({ title, description = '', priority = 'medium', status = 'todo' }) {
+    const now = new Date().toISOString();
+    const newTask = {
+      id: this.currentId++,
+      title: title.trim(),
+      description: typeof description === 'string' ? description.trim() : '',
+      priority: priority.toLowerCase(),
+      status: status.toLowerCase(),
+      createdAt: now,
+      updatedAt: now
+    };
+    this.tasks.push(newTask);
+    return newTask;
+  },
+
+  update(id, updates) {
+    const numericId = Number(id);
+    const index = this.tasks.findIndex(t => t.id === numericId);
+    if (index === -1) return null;
+
+    const existing = this.tasks[index];
+    const updatedTask = {
+      ...existing,
+      ...(updates.title !== undefined ? { title: updates.title.trim() } : {}),
+      ...(updates.description !== undefined ? { description: updates.description.trim() } : {}),
+      ...(updates.priority !== undefined ? { priority: updates.priority.toLowerCase() } : {}),
+      ...(updates.status !== undefined ? { status: updates.status.toLowerCase() } : {}),
+      updatedAt: new Date().toISOString()
+    };
+    this.tasks[index] = updatedTask;
+    return updatedTask;
+  },
+
+  remove(id) {
+    const numericId = Number(id);
+    const index = this.tasks.findIndex(t => t.id === numericId);
+    if (index === -1) return false;
+    this.tasks.splice(index, 1);
+    return true;
+  },
+
+  reset(initialSeed = []) {
+    this.currentId = 1;
+    if (initialSeed.length > 0) {
+      this.tasks = initialSeed.map(item => ({
+        ...item,
+        id: item.id || this.currentId++
+      }));
+    } else {
+      this.tasks = [];
+    }
   }
-];
+};
 
-const VALID_PRIORITIES = ['low', 'medium', 'high'];
-const VALID_STATUSES = ['todo', 'in-progress', 'completed'];
+let explicitTestDouble = null;
 
-function getAll({ status, priority, search } = {}) {
-  let result = [...tasks];
+function isTestEnvironment() {
+  return (
+    process.env.NODE_ENV === 'test' ||
+    process.env.npm_lifecycle_event === 'test' ||
+    process.execArgv.some(arg => arg.includes('test'))
+  );
+}
+
+/**
+ * Returns true if test double mode is currently active.
+ * Only allowed in test environment; production and development never fall back to mock data.
+ * @returns {boolean}
+ */
+function isTestDoubleActive() {
+  if (explicitTestDouble !== null) return explicitTestDouble;
+  return isTestEnvironment() && !isDbConnected();
+}
+
+function enableTestDouble() {
+  explicitTestDouble = true;
+}
+
+function disableTestDouble() {
+  explicitTestDouble = false;
+}
+
+/**
+ * Ensures a valid storage backend is ready. Throws 503 error if database is unavailable
+ * and test double is not explicitly active.
+ */
+function assertReady() {
+  if (isDbConnected()) return;
+  if (isTestDoubleActive()) return;
+
+  const error = new Error('Database is unavailable');
+  error.name = 'DatabaseConnectionError';
+  error.status = 503;
+  throw error;
+}
+
+/**
+ * Retrieves tasks with optional filtering and keyword search.
+ * @param {Object} [filters]
+ * @returns {Promise<Array>}
+ */
+async function getAll({ status, priority, search } = {}) {
+  assertReady();
+
+  if (isTestDoubleActive() && !isDbConnected()) {
+    return testDoubleStore.getAll({ status, priority, search });
+  }
+
+  const filter = {};
 
   if (status && status !== 'all') {
-    result = result.filter(t => t.status.toLowerCase() === status.toLowerCase());
+    filter.status = status.toLowerCase();
   }
 
   if (priority && priority !== 'all') {
-    result = result.filter(t => t.priority.toLowerCase() === priority.toLowerCase());
+    filter.priority = priority.toLowerCase();
   }
 
   if (search && search.trim()) {
-    const q = search.trim().toLowerCase();
-    result = result.filter(
-      t => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q))
-    );
+    const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    filter.$or = [
+      { title: { $regex: escaped, $options: 'i' } },
+      { description: { $regex: escaped, $options: 'i' } }
+    ];
   }
 
-  // Sort by newest first by default
-  return result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const tasks = await Task.find(filter).sort({ createdAt: -1 }).lean();
+  return tasks.map(t => {
+    delete t._id;
+    delete t.__v;
+    return t;
+  });
 }
 
-function getById(id) {
+/**
+ * Retrieves a single task by numeric ID or MongoDB ObjectId.
+ * @param {number|string} id
+ * @returns {Promise<Object|null>}
+ */
+async function getById(id) {
+  assertReady();
+
+  if (isTestDoubleActive() && !isDbConnected()) {
+    return testDoubleStore.getById(id);
+  }
+
   const numericId = Number(id);
-  return tasks.find(t => t.id === numericId) || null;
+  let query;
+  if (!Number.isNaN(numericId) && numericId > 0 && Number.isInteger(numericId)) {
+    query = { id: numericId };
+  } else if (mongoose.Types.ObjectId.isValid(id)) {
+    query = { _id: id };
+  } else {
+    return null;
+  }
+
+  const task = await Task.findOne(query).lean();
+  if (!task) return null;
+  delete task._id;
+  delete task.__v;
+  return task;
 }
 
-function create({ title, description = '', priority = 'medium', status = 'todo' }) {
-  const now = new Date().toISOString();
-  const newTask = {
-    id: currentId++,
+/**
+ * Creates and persists a new task document in MongoDB Atlas.
+ * @param {Object} taskData
+ * @returns {Promise<Object>}
+ */
+async function create({ title, description = '', priority = 'medium', status = 'todo' }) {
+  assertReady();
+
+  if (isTestDoubleActive() && !isDbConnected()) {
+    return testDoubleStore.create({ title, description, priority, status });
+  }
+
+  const nextId = await getNextSequence('taskId');
+  const taskDoc = await Task.create({
+    id: nextId,
     title: title.trim(),
     description: typeof description === 'string' ? description.trim() : '',
     priority: priority.toLowerCase(),
-    status: status.toLowerCase(),
-    createdAt: now,
-    updatedAt: now
-  };
+    status: status.toLowerCase()
+  });
 
-  tasks.push(newTask);
-  return newTask;
+  const taskObj = taskDoc.toObject();
+  delete taskObj._id;
+  delete taskObj.__v;
+  return taskObj;
 }
 
-function update(id, updates) {
+/**
+ * Updates an existing task by ID.
+ * @param {number|string} id
+ * @param {Object} updates
+ * @returns {Promise<Object|null>}
+ */
+async function update(id, updates) {
+  assertReady();
+
+  if (isTestDoubleActive() && !isDbConnected()) {
+    return testDoubleStore.update(id, updates);
+  }
+
   const numericId = Number(id);
-  const taskIndex = tasks.findIndex(t => t.id === numericId);
-  if (taskIndex === -1) return null;
-
-  const existing = tasks[taskIndex];
-  const updatedTask = {
-    ...existing,
-    ...(updates.title !== undefined ? { title: updates.title.trim() } : {}),
-    ...(updates.description !== undefined ? { description: updates.description.trim() } : {}),
-    ...(updates.priority !== undefined ? { priority: updates.priority.toLowerCase() } : {}),
-    ...(updates.status !== undefined ? { status: updates.status.toLowerCase() } : {}),
-    updatedAt: new Date().toISOString()
-  };
-
-  tasks[taskIndex] = updatedTask;
-  return updatedTask;
-}
-
-function remove(id) {
-  const numericId = Number(id);
-  const taskIndex = tasks.findIndex(t => t.id === numericId);
-  if (taskIndex === -1) return false;
-
-  tasks.splice(taskIndex, 1);
-  return true;
-}
-
-function reset(initialSeed = []) {
-  currentId = 1;
-  if (initialSeed.length > 0) {
-    tasks = initialSeed.map(item => ({
-      ...item,
-      id: currentId++
-    }));
+  let query;
+  if (!Number.isNaN(numericId) && numericId > 0 && Number.isInteger(numericId)) {
+    query = { id: numericId };
+  } else if (mongoose.Types.ObjectId.isValid(id)) {
+    query = { _id: id };
   } else {
-    tasks = [];
+    return null;
+  }
+
+  const task = await Task.findOne(query);
+  if (!task) return null;
+
+  if (updates.title !== undefined) task.title = updates.title.trim();
+  if (updates.description !== undefined) task.description = updates.description.trim();
+  if (updates.priority !== undefined) task.priority = updates.priority.toLowerCase();
+  if (updates.status !== undefined) task.status = updates.status.toLowerCase();
+
+  await task.save();
+  const obj = task.toObject();
+  delete obj._id;
+  delete obj.__v;
+  return obj;
+}
+
+/**
+ * Removes a task by ID.
+ * @param {number|string} id
+ * @returns {Promise<boolean>}
+ */
+async function remove(id) {
+  assertReady();
+
+  if (isTestDoubleActive() && !isDbConnected()) {
+    return testDoubleStore.remove(id);
+  }
+
+  const numericId = Number(id);
+  let query;
+  if (!Number.isNaN(numericId) && numericId > 0 && Number.isInteger(numericId)) {
+    query = { id: numericId };
+  } else if (mongoose.Types.ObjectId.isValid(id)) {
+    query = { _id: id };
+  } else {
+    return false;
+  }
+
+  const result = await Task.deleteOne(query);
+  return result.deletedCount > 0;
+}
+
+/**
+ * Resets storage state. Clears database collections or in-memory double.
+ * @param {Array} [initialSeed=[]]
+ * @returns {Promise<void>}
+ */
+async function reset(initialSeed = []) {
+  if (isDbConnected()) {
+    await Task.deleteMany({});
+    await Counter.deleteMany({});
+
+    let maxId = 0;
+    if (initialSeed.length > 0) {
+      for (let i = 0; i < initialSeed.length; i++) {
+        const item = initialSeed[i];
+        const taskId = item.id || (i + 1);
+        if (taskId > maxId) maxId = taskId;
+        await Task.create({
+          id: taskId,
+          title: item.title,
+          description: item.description || '',
+          priority: item.priority || 'medium',
+          status: item.status || 'todo',
+          createdAt: item.createdAt || new Date(),
+          updatedAt: item.updatedAt || new Date()
+        });
+      }
+    }
+    await setSequence('taskId', maxId);
+    return;
+  }
+
+  if (isTestDoubleActive()) {
+    testDoubleStore.reset(initialSeed);
   }
 }
 
@@ -130,5 +339,9 @@ module.exports = {
   create,
   update,
   remove,
-  reset
+  reset,
+  isDbConnected,
+  isTestDoubleActive,
+  enableTestDouble,
+  disableTestDouble
 };

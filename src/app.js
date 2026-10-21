@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const healthRouter = require('./routes/health');
@@ -23,7 +24,7 @@ app.use(express.json());
 // Serve static frontend assets from public directory
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Health check endpoint
+// Health check and readiness endpoints
 app.use('/health', healthRouter);
 
 // Tasks REST API
@@ -52,6 +53,16 @@ app.use((err, req, res, next) => {
   // Handle malformed JSON body errors from express.json()
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     return res.status(400).json({ error: 'Malformed JSON payload' });
+  }
+
+  // Mongoose validation errors
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({ error: err.message });
+  }
+
+  // Database connection errors
+  if (err.status === 503 || err.name === 'DatabaseConnectionError') {
+    return res.status(503).json({ error: 'Database service unavailable' });
   }
 
   res.status(500).json({ error: 'Internal Server Error' });

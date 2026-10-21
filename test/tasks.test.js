@@ -19,8 +19,8 @@ describe('Tasks API (/api/tasks)', () => {
   });
 
   // Reset store to known state before each test
-  beforeEach(() => {
-    store.reset([
+  beforeEach(async () => {
+    await store.reset([
       {
         title: 'Initial Seed Task 1',
         description: 'First seed task description',
