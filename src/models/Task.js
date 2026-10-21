@@ -46,6 +46,18 @@ const taskSchema = new mongoose.Schema(
       },
       default: 'todo',
       lowercase: true
+    },
+    createdBy: {
+      type: String,
+      required: [true, 'Creator name is required'],
+      trim: true,
+      maxlength: [80, 'Creator name must not exceed 80 characters'],
+      validate: {
+        validator: function(v) {
+          return typeof v === 'string' && v.trim().length > 0;
+        },
+        message: 'Creator name is required and must not be empty'
+      }
     }
   },
   {

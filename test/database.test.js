@@ -79,13 +79,15 @@ describe('Database & Mongoose Integration Tests', () => {
         title: 'Valid Task Title',
         description: 'Valid description text',
         priority: 'high',
-        status: 'todo'
+        status: 'todo',
+        createdBy: 'Alice'
       });
 
       const err = await doc.validate().catch(e => e);
       assert.equal(err, undefined);
       assert.equal(doc.id, 1);
       assert.equal(doc.title, 'Valid Task Title');
+      assert.equal(doc.createdBy, 'Alice');
     });
 
     it('should fail validation when title is missing or empty string', async () => {
@@ -159,12 +161,26 @@ describe('Database & Mongoose Integration Tests', () => {
       assert.match(err.errors.status.message, /Invalid status/i);
     });
 
+    it('should fail validation when createdBy is missing', async () => {
+      const docNoCreator = new Task({
+        id: 8,
+        title: 'No Creator Task',
+        priority: 'medium',
+        status: 'todo'
+      });
+
+      const err = await docNoCreator.validate().catch(e => e);
+      assert.ok(err, 'Expected validation error for missing createdBy');
+      assert.ok(err.errors.createdBy, 'Should have createdBy error');
+    });
+
     it('should transform task to remove _id and __v in toJSON', () => {
       const doc = new Task({
         id: 7,
         title: 'Transform Test',
         priority: 'low',
-        status: 'todo'
+        status: 'todo',
+        createdBy: 'Test'
       });
 
       const json = doc.toJSON();

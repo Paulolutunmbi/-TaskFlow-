@@ -14,6 +14,7 @@
     searchQuery: '',
     sortBy: 'newest',
     isLoading: false,
+    hasError: false,
     taskToDelete: null,
     taskToEdit: null
   };
@@ -33,13 +34,16 @@
 
     // Create Form
     createForm: document.getElementById('createTaskForm'),
+    taskCreatedBy: document.getElementById('taskCreatedBy'),
     taskTitle: document.getElementById('taskTitle'),
     taskDesc: document.getElementById('taskDesc'),
     taskPriority: document.getElementById('taskPriority'),
     taskStatus: document.getElementById('taskStatus'),
     createSubmitBtn: document.getElementById('createSubmitBtn'),
+    createdByError: document.getElementById('createdByError'),
     titleError: document.getElementById('titleError'),
     descError: document.getElementById('descError'),
+    createdByCharCount: document.getElementById('createdByCharCount'),
     titleCharCount: document.getElementById('titleCharCount'),
     descCharCount: document.getElementById('descCharCount'),
 
@@ -60,6 +64,10 @@
     // Task List & States
     taskList: document.getElementById('taskList'),
     taskListLoading: document.getElementById('taskListLoading'),
+    errorState: document.getElementById('errorState'),
+    errorTitle: document.getElementById('errorTitle'),
+    errorDesc: document.getElementById('errorDesc'),
+    retryBtn: document.getElementById('retryBtn'),
     emptyState: document.getElementById('emptyState'),
     emptyTitle: document.getElementById('emptyTitle'),
     emptyDesc: document.getElementById('emptyDesc'),
@@ -164,6 +172,8 @@
 
   async function fetchTasks() {
     setLoading(true);
+    state.hasError = false;
+    el.errorState.hidden = true;
     try {
       const res = await fetch('/api/tasks');
       if (!res.ok) {
@@ -173,7 +183,9 @@
       state.tasks = await res.json();
       render();
     } catch (err) {
-      showToast(err.message, 'error');
+      state.hasError = true;
+      state.tasks = [];
+      showError(err.message);
     } finally {
       setLoading(false);
     }
@@ -257,6 +269,13 @@
     }
   }
 
+  function showError(message) {
+    el.errorState.hidden = false;
+    el.emptyState.hidden = true;
+    el.taskList.innerHTML = '';
+    el.errorDesc.textContent = message || 'Unable to reach the database. Please try again.';
+  }
+
   function updateMetrics() {
     const total = state.tasks.length;
     const todo = state.tasks.filter(t => t.status === 'todo').length;
@@ -320,6 +339,9 @@
   function render() {
     updateMetrics();
 
+    // Hide error state on successful render
+    el.errorState.hidden = true;
+
     // Update Tab active classes
     el.statusTabs.forEach(tab => {
       const tabStatus = tab.dataset.status;
@@ -354,8 +376,8 @@
       el.emptyState.hidden = false;
 
       if (state.tasks.length === 0) {
-        el.emptyTitle.textContent = 'No tasks created yet';
-        el.emptyDesc.textContent = 'Get started by creating your first task using the form on the left.';
+        el.emptyTitle.textContent = 'No tasks yet';
+        el.emptyDesc.textContent = 'Be the first to create a task on this shared board. Enter your name and task details in the form on the left.';
         el.emptyActionBtn.hidden = true;
       } else {
         el.emptyTitle.textContent = 'No tasks match criteria';
@@ -372,6 +394,12 @@
       .map(task => {
         const isCompleted = task.status === 'completed';
         const formattedDate = formatDate(task.createdAt);
+        const creatorHtml = task.createdBy
+          ? `<span class="task-creator" title="Created by ${escapeHtml(task.createdBy)}">
+               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+               ${escapeHtml(task.createdBy)}
+             </span>`
+          : '';
 
         return `
           <article class="task-card ${isCompleted ? 'task-completed' : ''}" data-id="${task.id}">
@@ -401,6 +429,8 @@
                   ? `<p class="task-description">${escapeHtml(task.description)}</p>`
                   : ''
               }
+
+              ${creatorHtml}
 
               <div class="task-card-footer">
                 <span class="task-timestamp" title="Created on ${task.createdAt}">Created: ${formattedDate}</span>
@@ -482,6 +512,12 @@
       showToast('Dashboard refreshed', 'info');
     });
 
+    // Retry button
+    el.retryBtn.addEventListener('click', () => {
+      fetchTasks();
+      apiCheckHealth();
+    });
+
     // Stat Cards click to filter
     el.statCards.forEach(card => {
       const handleStatClick = () => {
@@ -537,6 +573,16 @@
     el.resetFiltersBtn.addEventListener('click', resetAllFilters);
     el.emptyActionBtn.addEventListener('click', resetAllFilters);
 
+    // Character counter on createdBy field
+    el.taskCreatedBy.addEventListener('input', e => {
+      const len = e.target.value.length;
+      el.createdByCharCount.textContent = `${len}/80`;
+      if (len > 0) {
+        el.createdByError.textContent = '';
+        el.taskCreatedBy.classList.remove('input-error');
+      }
+    });
+
     // Character counter & real-time validation on Create Form
     el.taskTitle.addEventListener('input', e => {
       const len = e.target.value.length;
@@ -570,24 +616,37 @@
     // Create Form Submit
     el.createForm.addEventListener('submit', async e => {
       e.preventDefault();
+      const createdBy = el.taskCreatedBy.value.trim();
       const title = el.taskTitle.value.trim();
       const description = el.taskDesc.value.trim();
       const priority = el.taskPriority.value;
       const status = el.taskStatus.value;
 
+      let hasFormError = false;
+
+      if (!createdBy) {
+        el.createdByError.textContent = 'Please enter your name.';
+        el.taskCreatedBy.classList.add('input-error');
+        if (!hasFormError) el.taskCreatedBy.focus();
+        hasFormError = true;
+      }
+
       if (!title) {
         el.titleError.textContent = 'Please enter a task title.';
         el.taskTitle.classList.add('input-error');
-        el.taskTitle.focus();
-        return;
+        if (!hasFormError) el.taskTitle.focus();
+        hasFormError = true;
       }
 
+      if (hasFormError) return;
+
       el.createSubmitBtn.disabled = true;
-      const success = await createTask({ title, description, priority, status });
+      const success = await createTask({ title, description, priority, status, createdBy });
       el.createSubmitBtn.disabled = false;
 
       if (success) {
         el.createForm.reset();
+        el.createdByCharCount.textContent = '0/80';
         el.titleCharCount.textContent = '0/100';
         el.descCharCount.textContent = '0/500';
         el.taskPriority.value = 'medium';

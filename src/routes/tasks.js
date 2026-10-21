@@ -60,7 +60,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/tasks - Create new task
 router.post('/', async (req, res) => {
   try {
-    const { title, description, priority, status } = req.body || {};
+    const { title, description, priority, status, createdBy } = req.body || {};
 
     // Validate title
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
@@ -97,11 +97,21 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Validate createdBy (required)
+    if (!createdBy || typeof createdBy !== 'string' || createdBy.trim().length === 0) {
+      return res.status(400).json({ error: 'Creator name is required and must not be empty' });
+    }
+    const trimmedCreatedBy = createdBy.trim();
+    if (trimmedCreatedBy.length > 80) {
+      return res.status(400).json({ error: 'Creator name must not exceed 80 characters' });
+    }
+
     const newTask = await store.create({
       title: trimmedTitle,
       description: description || '',
       priority: taskPriority,
-      status: taskStatus
+      status: taskStatus,
+      createdBy: trimmedCreatedBy
     });
 
     res.status(201).json(newTask);

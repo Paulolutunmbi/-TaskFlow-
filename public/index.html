@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TaskFlow &mdash; DevOps Deployment Pipeline Capstone</title>
-  <meta name="description" content="TaskFlow is a lightweight, responsive task management dashboard built for the Ibadan Digital Academy DevOps Capstone.">
+  <title>TaskFlow &mdash; Shared Task Board</title>
+  <meta name="description" content="TaskFlow is a shared task board. Tasks you create are visible to all visitors using the same deployed application.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
         </div>
         <div class="brand-text">
           <h1 class="brand-title">TaskFlow</h1>
-          <span class="brand-badge">DevOps Capstone &bull; Cohort 2</span>
+          <span class="brand-badge">Shared Task Board</span>
         </div>
       </div>
 
@@ -40,6 +40,17 @@
       </div>
     </div>
   </header>
+
+  <!-- Shared Board Notice -->
+  <div class="shared-notice-bar" role="note" aria-label="Shared board notice">
+    <div class="shared-notice-inner">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span>
+        <strong>A shared task board for everyone.</strong> Tasks you create are visible to other visitors. &nbsp;
+        <span class="shared-notice-privacy">Please don&rsquo;t add passwords, phone numbers, email addresses, or other sensitive details &mdash; anyone with access to this board may view or modify its tasks.</span>
+      </span>
+    </div>
+  </div>
 
   <!-- Main Container -->
   <main class="main-wrapper">
@@ -93,10 +104,30 @@
         <div class="panel-card">
           <div class="panel-header">
             <h2 class="panel-title">Create New Task</h2>
-            <p class="panel-subtitle">Define work items for your deployment pipeline.</p>
+            <p class="panel-subtitle">Add a task to the shared board. It will be visible to all visitors.</p>
           </div>
 
           <form id="createTaskForm" novalidate>
+            <div class="form-group">
+              <label for="taskCreatedBy" class="form-label">
+                Your name <span class="required-indicator">*</span>
+              </label>
+              <input
+                type="text"
+                id="taskCreatedBy"
+                name="createdBy"
+                class="form-control"
+                placeholder="e.g. Alex or Team Infra"
+                maxlength="80"
+                required
+                autocomplete="name"
+              >
+              <div class="form-meta">
+                <span class="field-error" id="createdByError"></span>
+                <span class="char-count" id="createdByCharCount">0/80</span>
+              </div>
+            </div>
+
             <div class="form-group">
               <label for="taskTitle" class="form-label">
                 Title <span class="required-indicator">*</span>
@@ -170,9 +201,9 @@
           <div class="devops-note">
             <div class="devops-note-header">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-              <span>Capstoner Tip</span>
+              <span>About this board</span>
             </div>
-            <p>Tasks are currently stored in-memory and will reset if the server restarts. Next phase: Containerize &amp; persist.</p>
+            <p>Tasks are stored in MongoDB and persist across refreshes and server restarts. All visitors share the same task list.</p>
           </div>
         </div>
       </aside>
@@ -248,6 +279,20 @@
             <span>Loading tasks...</span>
           </div>
 
+          <!-- Error State -->
+          <div id="errorState" class="empty-state" hidden>
+            <div class="empty-icon-wrapper" style="color: var(--color-error, #e05252);">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            </div>
+            <h3 class="empty-title" id="errorTitle">Could not load tasks</h3>
+            <p class="empty-desc" id="errorDesc">Unable to connect to the database. Please check your connection and try again.</p>
+            <button id="retryBtn" class="btn btn-primary btn-sm">Retry</button>
+          </div>
+
           <!-- Tasks List Element -->
           <div id="taskList" class="task-list" aria-live="polite"></div>
 
@@ -261,8 +306,8 @@
                 <line x1="9" y1="17" x2="12" y2="17"/>
               </svg>
             </div>
-            <h3 class="empty-title" id="emptyTitle">No tasks found</h3>
-            <p class="empty-desc" id="emptyDesc">Get started by creating your first task in the left panel.</p>
+            <h3 class="empty-title" id="emptyTitle">No tasks yet</h3>
+            <p class="empty-desc" id="emptyDesc">Be the first to create a task on this shared board. Enter your name and task details in the form on the left.</p>
             <button id="emptyActionBtn" class="btn btn-primary btn-sm" hidden>Reset filters</button>
           </div>
         </div>
@@ -372,7 +417,7 @@
   <footer class="app-footer">
     <div class="footer-container">
       <p class="footer-text">
-        <strong>TaskFlow</strong> &bull; Ibadan Digital Academy DevOps Cohort 2, 2026 Capstone &bull; Code &rarr; Container &rarr; Cloud &rarr; Kubernetes
+        <strong>TaskFlow</strong> &bull; A shared task board &mdash; tasks are visible to all visitors
       </p>
     </div>
   </footer>

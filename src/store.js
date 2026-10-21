@@ -41,7 +41,7 @@ const testDoubleStore = {
     return this.tasks.find(t => t.id === numericId) || null;
   },
 
-  create({ title, description = '', priority = 'medium', status = 'todo' }) {
+  create({ title, description = '', priority = 'medium', status = 'todo', createdBy = 'Anonymous' }) {
     const now = new Date().toISOString();
     const newTask = {
       id: this.currentId++,
@@ -49,6 +49,7 @@ const testDoubleStore = {
       description: typeof description === 'string' ? description.trim() : '',
       priority: priority.toLowerCase(),
       status: status.toLowerCase(),
+      createdBy: createdBy.trim(),
       createdAt: now,
       updatedAt: now
     };
@@ -209,11 +210,11 @@ async function getById(id) {
  * @param {Object} taskData
  * @returns {Promise<Object>}
  */
-async function create({ title, description = '', priority = 'medium', status = 'todo' }) {
+async function create({ title, description = '', priority = 'medium', status = 'todo', createdBy }) {
   assertReady();
 
   if (isTestDoubleActive() && !isDbConnected()) {
-    return testDoubleStore.create({ title, description, priority, status });
+    return testDoubleStore.create({ title, description, priority, status, createdBy });
   }
 
   const nextId = await getNextSequence('taskId');
@@ -222,7 +223,8 @@ async function create({ title, description = '', priority = 'medium', status = '
     title: title.trim(),
     description: typeof description === 'string' ? description.trim() : '',
     priority: priority.toLowerCase(),
-    status: status.toLowerCase()
+    status: status.toLowerCase(),
+    createdBy: createdBy.trim()
   });
 
   const taskObj = taskDoc.toObject();
@@ -317,6 +319,7 @@ async function reset(initialSeed = []) {
           description: item.description || '',
           priority: item.priority || 'medium',
           status: item.status || 'todo',
+          createdBy: item.createdBy || 'Test User',
           createdAt: item.createdAt || new Date(),
           updatedAt: item.updatedAt || new Date()
         });

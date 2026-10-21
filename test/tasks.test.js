@@ -27,6 +27,7 @@ describe('Tasks API (/api/tasks)', () => {
         description: 'First seed task description',
         priority: 'high',
         status: 'todo',
+        createdBy: 'Seed User A',
         createdAt: new Date(now).toISOString(),
         updatedAt: new Date(now).toISOString()
       },
@@ -35,6 +36,7 @@ describe('Tasks API (/api/tasks)', () => {
         description: 'Second seed task description',
         priority: 'medium',
         status: 'completed',
+        createdBy: 'Seed User B',
         createdAt: new Date(now - 10000).toISOString(),
         updatedAt: new Date(now - 10000).toISOString()
       }
@@ -50,6 +52,16 @@ describe('Tasks API (/api/tasks)', () => {
       assert.ok(Array.isArray(data), 'Result must be an array');
       assert.equal(data.length, 2);
       assert.equal(data[0].title, 'Initial Seed Task 1');
+    });
+
+    it('should return tasks that include the createdBy field', async () => {
+      const res = await fetch(`${baseUrl}/api/tasks`);
+      assert.equal(res.status, 200);
+
+      const data = await res.json();
+      assert.ok(data.length > 0, 'Expected at least one task');
+      assert.ok(data[0].createdBy, 'Task must include createdBy field');
+      assert.equal(typeof data[0].createdBy, 'string');
     });
 
     it('should filter tasks by status', async () => {
@@ -90,6 +102,20 @@ describe('Tasks API (/api/tasks)', () => {
     });
   });
 
+  describe('GET /api/tasks - empty state', () => {
+    it('should return an empty array and 200 OK when no tasks exist', async () => {
+      // Reset to empty - no automatic seeding
+      await store.reset([]);
+
+      const res = await fetch(`${baseUrl}/api/tasks`);
+      assert.equal(res.status, 200);
+
+      const data = await res.json();
+      assert.ok(Array.isArray(data), 'Result must be an array');
+      assert.equal(data.length, 0, 'Board must be empty — no mock data seeded');
+    });
+  });
+
   describe('GET /api/tasks/:id', () => {
     it('should return 200 and the task for an existing ID', async () => {
       const res = await fetch(`${baseUrl}/api/tasks/1`);
@@ -98,6 +124,7 @@ describe('Tasks API (/api/tasks)', () => {
       const data = await res.json();
       assert.equal(data.id, 1);
       assert.equal(data.title, 'Initial Seed Task 1');
+      assert.ok(data.createdBy, 'Task must include createdBy');
     });
 
     it('should return 404 for a non-existent task ID', async () => {
@@ -123,7 +150,8 @@ describe('Tasks API (/api/tasks)', () => {
         title: 'New Deployment Step',
         description: 'Verify deployment artifact integrity',
         priority: 'high',
-        status: 'todo'
+        status: 'todo',
+        createdBy: 'Alice'
       };
 
       const res = await fetch(`${baseUrl}/api/tasks`, {
@@ -139,6 +167,7 @@ describe('Tasks API (/api/tasks)', () => {
       assert.equal(data.description, payload.description);
       assert.equal(data.priority, payload.priority);
       assert.equal(data.status, payload.status);
+      assert.equal(data.createdBy, 'Alice');
       assert.ok(data.createdAt);
       assert.ok(data.updatedAt);
     });
@@ -147,7 +176,7 @@ describe('Tasks API (/api/tasks)', () => {
       const res = await fetch(`${baseUrl}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Task with defaults' })
+        body: JSON.stringify({ title: 'Task with defaults', createdBy: 'Bob' })
       });
 
       assert.equal(res.status, 201);
@@ -155,13 +184,14 @@ describe('Tasks API (/api/tasks)', () => {
       assert.equal(data.priority, 'medium');
       assert.equal(data.status, 'todo');
       assert.equal(data.description, '');
+      assert.equal(data.createdBy, 'Bob');
     });
 
     it('should return 400 when title is missing or empty', async () => {
       const res = await fetch(`${baseUrl}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: '   ' })
+        body: JSON.stringify({ title: '   ', createdBy: 'Carol' })
       });
 
       assert.equal(res.status, 400);
@@ -173,7 +203,7 @@ describe('Tasks API (/api/tasks)', () => {
       const res = await fetch(`${baseUrl}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'a'.repeat(101) })
+        body: JSON.stringify({ title: 'a'.repeat(101), createdBy: 'Carol' })
       });
 
       assert.equal(res.status, 400);
@@ -185,7 +215,7 @@ describe('Tasks API (/api/tasks)', () => {
       const res = await fetch(`${baseUrl}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Valid Title', priority: 'critical' })
+        body: JSON.stringify({ title: 'Valid Title', priority: 'critical', createdBy: 'Dan' })
       });
 
       assert.equal(res.status, 400);
@@ -197,12 +227,66 @@ describe('Tasks API (/api/tasks)', () => {
       const res = await fetch(`${baseUrl}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Valid Title', status: 'archived' })
+        body: JSON.stringify({ title: 'Valid Title', status: 'archived', createdBy: 'Dan' })
       });
 
       assert.equal(res.status, 400);
       const data = await res.json();
       assert.ok(data.error.includes('Invalid status'));
+    });
+
+    it('should return 400 when createdBy is missing', async () => {
+      const res = await fetch(`${baseUrl}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Valid Title' })
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.ok(data.error.toLowerCase().includes('creator name'), `Expected creator name error but got: ${data.error}`);
+    });
+
+    it('should return 400 when createdBy is empty or whitespace', async () => {
+      const res = await fetch(`${baseUrl}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Valid Title', createdBy: '   ' })
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.ok(data.error.toLowerCase().includes('creator name'), `Expected creator name error but got: ${data.error}`);
+    });
+
+    it('should trim whitespace from createdBy before saving', async () => {
+      const res = await fetch(`${baseUrl}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Trim Test', createdBy: '  Eve  ' })
+      });
+
+      assert.equal(res.status, 201);
+      const data = await res.json();
+      assert.equal(data.createdBy, 'Eve');
+    });
+
+    it('should persist tasks — they survive the request cycle (no mock fallback)', async () => {
+      // Create a task
+      const createRes = await fetch(`${baseUrl}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Persistence Check', createdBy: 'Frank' })
+      });
+      assert.equal(createRes.status, 201);
+      const created = await createRes.json();
+
+      // Immediately retrieve it
+      const getRes = await fetch(`${baseUrl}/api/tasks/${created.id}`);
+      assert.equal(getRes.status, 200);
+      const fetched = await getRes.json();
+      assert.equal(fetched.title, 'Persistence Check');
+      assert.equal(fetched.createdBy, 'Frank');
     });
   });
 
