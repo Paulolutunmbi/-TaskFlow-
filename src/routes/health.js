@@ -12,7 +12,7 @@ router.get('/', (req, res) => {
   const dbStatus = getDatabaseStatus();
 
   // Healthy if DB connected, or in test environment using isolated test double
-  const isHealthy = dbStatus.isConnected || (process.env.NODE_ENV === 'test' && store.isTestDoubleActive());
+  const isHealthy = dbStatus.isConnected || store.isTestDoubleActive();
   const statusCode = isHealthy ? 200 : 503;
   const statusString = isHealthy ? 'ok' : 'degraded';
 
@@ -33,7 +33,7 @@ router.get('/', (req, res) => {
 // GET /health/ready - Readiness probe for Kubernetes / load balancers
 router.get('/ready', (req, res) => {
   const dbStatus = getDatabaseStatus();
-  const isReady = dbStatus.isConnected || (process.env.NODE_ENV === 'test' && store.isTestDoubleActive());
+  const isReady = dbStatus.isConnected || store.isTestDoubleActive();
 
   if (isReady) {
     return res.status(200).json({

@@ -152,7 +152,8 @@
       el.healthPill.classList.remove('error');
       el.healthPill.classList.add('healthy');
       el.healthPill.querySelector('.status-label').textContent = `System: ${data.status.toUpperCase()} (${data.uptime})`;
-      el.healthPill.title = `TaskFlow v${data.version} online | Uptime: ${data.uptime}`;
+      const dbInfo = data.database && data.database.status ? ` | DB: ${data.database.status}` : '';
+      el.healthPill.title = `TaskFlow v${data.version} online${dbInfo} | Uptime: ${data.uptime}`;
     } catch (err) {
       el.healthPill.classList.remove('healthy');
       el.healthPill.classList.add('error');
@@ -211,7 +212,7 @@
         throw new Error(data.error || 'Failed to update task');
       }
 
-      const index = state.tasks.findIndex(t => t.id === id);
+      const index = state.tasks.findIndex(t => t.id === id || String(t.id) === String(id) || t._id === id);
       if (index !== -1) {
         state.tasks[index] = data;
       }
@@ -234,7 +235,7 @@
         throw new Error(data.error || 'Failed to delete task');
       }
 
-      state.tasks = state.tasks.filter(t => t.id !== id);
+      state.tasks = state.tasks.filter(t => t.id !== id && String(t.id) !== String(id) && t._id !== id);
       render();
       showToast('Task deleted', 'info');
       return true;

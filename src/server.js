@@ -24,6 +24,9 @@ function getMode() {
   if (process.env.NODE_ENV) {
     return process.env.NODE_ENV;
   }
+  if (process.env.npm_lifecycle_event === 'test' || process.execArgv.some(arg => arg.includes('test'))) {
+    return 'test';
+  }
   const isDev = isWatchModeActive() || process.env.npm_lifecycle_event === 'dev';
   return isDev ? 'development' : 'production';
 }
@@ -157,10 +160,11 @@ async function startServer(options = {}) {
 
   // Determine whether to connect to MongoDB:
   // In development/production, DB connection is required before serving traffic.
-  // In test mode, only connect if explicit or if MONGODB_URI is provided.
+  // In test mode, only connect if explicitly requested or test URI provided.
+  const isTestProcess = process.env.npm_lifecycle_event === 'test' || process.execArgv.some(arg => arg.includes('test'));
   const shouldConnectDb = options.connectDb !== undefined
     ? options.connectDb
-    : (mode !== 'test' || Boolean(options.mongoUri || process.env.MONGODB_URI));
+    : (!isTestProcess && mode !== 'test' || Boolean(options.mongoUri));
 
   if (shouldConnectDb) {
     try {

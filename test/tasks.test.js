@@ -20,22 +20,23 @@ describe('Tasks API (/api/tasks)', () => {
 
   // Reset store to known state before each test
   beforeEach(async () => {
+    const now = Date.now();
     await store.reset([
       {
         title: 'Initial Seed Task 1',
         description: 'First seed task description',
         priority: 'high',
         status: 'todo',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: new Date(now).toISOString(),
+        updatedAt: new Date(now).toISOString()
       },
       {
         title: 'Initial Seed Task 2',
         description: 'Second seed task description',
         priority: 'medium',
         status: 'completed',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: new Date(now - 10000).toISOString(),
+        updatedAt: new Date(now - 10000).toISOString()
       }
     ]);
   });
