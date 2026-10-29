@@ -15,6 +15,8 @@
     sortBy: 'newest',
     isLoading: false,
     hasError: false,
+    taskRequestId: 0,
+    taskRequestController: null,
     taskToDelete: null,
     taskToEdit: null
   };
@@ -171,23 +173,53 @@
   }
 
   async function fetchTasks() {
+    const requestId = ++state.taskRequestId;
+    if (state.taskRequestController) {
+      state.taskRequestController.abort();
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    state.taskRequestController = controller;
+
     setLoading(true);
     state.hasError = false;
     el.errorState.hidden = true;
+    el.emptyState.hidden = true;
+
     try {
-      const res = await fetch('/api/tasks');
+      const res = await fetch('/api/tasks', { signal: controller.signal });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Failed to fetch tasks (HTTP ${res.status})`);
       }
-      state.tasks = await res.json();
+
+      const tasks = await res.json();
+      if (!Array.isArray(tasks)) {
+        throw new Error('The server returned an invalid task list.');
+      }
+
+      if (requestId !== state.taskRequestId) return;
+      state.tasks = tasks;
       render();
     } catch (err) {
-      state.hasError = true;
-      state.tasks = [];
-      showError(err.message);
+      if (requestId !== state.taskRequestId) return;
+
+      if (err.name === 'AbortError') {
+        state.hasError = true;
+        state.tasks = [];
+        showError('The task request timed out. Please try again.');
+      } else {
+        state.hasError = true;
+        state.tasks = [];
+        showError(err.message);
+      }
     } finally {
-      setLoading(false);
+      clearTimeout(timeoutId);
+      if (requestId === state.taskRequestId) {
+        state.taskRequestController = null;
+        setLoading(false);
+      }
     }
   }
 
@@ -262,9 +294,11 @@
     state.isLoading = isLoading;
     if (isLoading) {
       el.taskListLoading.hidden = false;
+      el.taskListLoading.setAttribute('aria-busy', 'true');
       el.taskList.style.opacity = '0.5';
     } else {
       el.taskListLoading.hidden = true;
+      el.taskListLoading.removeAttribute('aria-busy');
       el.taskList.style.opacity = '1';
     }
   }
