@@ -1,0 +1,54 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskflow
+  namespace: taskflow
+  labels:
+    app: taskflow
+
+spec:
+  selector:
+    matchLabels:
+      app: taskflow
+
+  template:
+    metadata:
+      labels:
+        app: taskflow
+
+    spec:
+      containers:
+        - name: taskflow
+          image: paulolutunmbi/taskflow:latest
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 3000
+              name: http
+
+          envFrom:
+            - secretRef:
+                name: taskflow-env
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"

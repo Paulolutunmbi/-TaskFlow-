@@ -1,0 +1,32 @@
+
+---
+- name: Configure TaskFlow environment
+  hosts: taskflow_servers
+  become: true
+
+  tasks:
+    - name: Ensure curl is installed
+      ansible.builtin.apt:
+        name: curl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create TaskFlow deployment directory
+      ansible.builtin.file:
+        path: /opt/taskflow
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Write TaskFlow deployment information
+      ansible.builtin.copy:
+        dest: /opt/taskflow/ansible-managed.txt
+        content: |
+          Application: TaskFlow
+          Managed by: Ansible
+          Environment: Ubuntu WSL
+        owner: root
+        group: root
+        mode: '0644'

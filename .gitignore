@@ -8,3 +8,11 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+crash.log
