@@ -66,10 +66,6 @@
     // Task List & States
     taskList: document.getElementById('taskList'),
     taskListLoading: document.getElementById('taskListLoading'),
-    errorState: document.getElementById('errorState'),
-    errorTitle: document.getElementById('errorTitle'),
-    errorDesc: document.getElementById('errorDesc'),
-    retryBtn: document.getElementById('retryBtn'),
     emptyState: document.getElementById('emptyState'),
     emptyTitle: document.getElementById('emptyTitle'),
     emptyDesc: document.getElementById('emptyDesc'),
@@ -184,8 +180,8 @@
 
     setLoading(true);
     state.hasError = false;
-    el.errorState.hidden = true;
     el.emptyState.hidden = true;
+    el.emptyState.style.display = 'none';
 
     try {
       const res = await fetch('/api/tasks', { signal: controller.signal });
@@ -207,11 +203,9 @@
 
       if (err.name === 'AbortError') {
         state.hasError = true;
-        state.tasks = [];
         showError('The task request timed out. Please try again.');
       } else {
         state.hasError = true;
-        state.tasks = [];
         showError(err.message);
       }
     } finally {
@@ -294,20 +288,29 @@
     state.isLoading = isLoading;
     if (isLoading) {
       el.taskListLoading.hidden = false;
+      el.taskListLoading.style.display = 'flex';
       el.taskListLoading.setAttribute('aria-busy', 'true');
       el.taskList.style.opacity = '0.5';
     } else {
       el.taskListLoading.hidden = true;
+      el.taskListLoading.style.display = 'none';
       el.taskListLoading.removeAttribute('aria-busy');
       el.taskList.style.opacity = '1';
     }
   }
 
   function showError(message) {
-    el.errorState.hidden = false;
-    el.emptyState.hidden = true;
-    el.taskList.innerHTML = '';
-    el.errorDesc.textContent = message || 'Unable to reach the database. Please try again.';
+    const errorMsg = message || 'Unable to connect to the database. Please try again.';
+    showToast(errorMsg, 'error');
+    if (state.tasks.length === 0) {
+      el.taskList.innerHTML = '';
+      el.emptyState.hidden = false;
+      el.emptyState.style.display = 'flex';
+      el.emptyTitle.textContent = 'No tasks available';
+      el.emptyDesc.textContent = errorMsg;
+      el.emptyActionBtn.hidden = false;
+      el.emptyActionBtn.textContent = 'Retry';
+    }
   }
 
   function updateMetrics() {
@@ -373,9 +376,6 @@
   function render() {
     updateMetrics();
 
-    // Hide error state on successful render
-    el.errorState.hidden = true;
-
     // Update Tab active classes
     el.statusTabs.forEach(tab => {
       const tabStatus = tab.dataset.status;
@@ -408,6 +408,7 @@
     if (visibleTasks.length === 0) {
       el.taskList.innerHTML = '';
       el.emptyState.hidden = false;
+      el.emptyState.style.display = 'flex';
 
       if (state.tasks.length === 0) {
         el.emptyTitle.textContent = 'No tasks yet';
@@ -423,6 +424,7 @@
     }
 
     el.emptyState.hidden = true;
+    el.emptyState.style.display = 'none';
 
     el.taskList.innerHTML = visibleTasks
       .map(task => {
@@ -436,7 +438,7 @@
           : '';
 
         return `
-          <article class="task-card ${isCompleted ? 'task-completed' : ''}" data-id="${task.id}">
+          <article class="task-card ${isCompleted ? 'task-completed' : ''}" data-id="${escapeHtml(String(task.id))}">
             <div class="task-check-wrapper">
               <input
                 type="checkbox"
@@ -546,12 +548,6 @@
       showToast('Dashboard refreshed', 'info');
     });
 
-    // Retry button
-    el.retryBtn.addEventListener('click', () => {
-      fetchTasks();
-      apiCheckHealth();
-    });
-
     // Stat Cards click to filter
     el.statCards.forEach(card => {
       const handleStatClick = () => {
@@ -603,9 +599,16 @@
       render();
     });
 
-    // Reset filters buttons
+    // Reset filters and retry buttons
     el.resetFiltersBtn.addEventListener('click', resetAllFilters);
-    el.emptyActionBtn.addEventListener('click', resetAllFilters);
+    el.emptyActionBtn.addEventListener('click', () => {
+      if (el.emptyActionBtn.textContent === 'Retry') {
+        fetchTasks();
+        apiCheckHealth();
+      } else {
+        resetAllFilters();
+      }
+    });
 
     // Character counter on createdBy field
     el.taskCreatedBy.addEventListener('input', e => {
@@ -692,14 +695,14 @@
     el.taskList.addEventListener('click', e => {
       const card = e.target.closest('.task-card');
       if (!card) return;
-      const id = Number(card.dataset.id);
-      const task = state.tasks.find(t => t.id === id);
+      const id = card.dataset.id;
+      const task = state.tasks.find(t => String(t.id) === id || String(t._id) === id);
       if (!task) return;
 
       // Toggle Complete Checkbox
       if (e.target.closest('.toggle-complete-btn')) {
         const newStatus = task.status === 'completed' ? 'todo' : 'completed';
-        updateTask(id, { status: newStatus });
+        updateTask(task.id ?? task._id, { status: newStatus });
         return;
       }
 
