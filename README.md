@@ -1,195 +1,315 @@
-# TaskFlow — Shared Task Board
+# TaskFlow — DevOps Capstone Deployment
 
-TaskFlow is a lightweight, responsive shared task board. Tasks created by any visitor are visible to **all other visitors** using the same deployed application and database.
+TaskFlow is a lightweight, responsive shared task board built with Node.js, Express, and MongoDB Atlas. This repository demonstrates a DevOps delivery workflow: source control, automated testing, containerization, image publishing, infrastructure configuration, configuration management, Kubernetes deployment, and deployment automation.
 
-> **Privacy notice:** Please do not add passwords, phone numbers, email addresses, or other sensitive personal information to tasks. Anyone with access to this application may be able to view or modify its tasks.
+> **Privacy notice:** TaskFlow has no user accounts or authentication. Visitors to the same deployment share the same tasks and can create, edit, complete, or delete them. Do not enter passwords, contact details, or other sensitive information.
 
----
+## 1. Project overview
 
-## What Is This?
+- **Application:** Shared task board with create, read, update, delete, filtering, and search.
+- **Backend:** Node.js and Express.
+- **Database:** MongoDB Atlas through Mongoose.
+- **Container:** Docker image published to Docker Hub.
+- **CI/CD:** GitHub Actions runs automated tests and builds/publishes the image on pushes to `main`.
+- **Orchestration:** Kubernetes manifests deployed to a local Minikube cluster.
+- **Infrastructure as Code:** Terraform local demonstration using the built-in `terraform_data` resource. Azure resource creation is intentionally not enabled.
+- **Configuration management:** Ansible playbook executed against the local Ubuntu WSL environment.
+- **Deployment automation:** Bash script applies Kubernetes manifests and waits for rollout completion.
 
-TaskFlow is an **open, unauthenticated shared task board**. There are no user accounts, authentication, or individual workspaces. Every person who visits the same deployed URL sees and can interact with the same set of tasks.
+## 2. Architecture
 
-- Tasks are stored in **MongoDB Atlas** and persist across page refreshes and server restarts.
-- Each task requires a **display name** (e.g. a first name or team alias) so visitors can see who added each task. This is not verified or tied to an account — it is informational only.
-- Anyone with access to the board can create, edit, complete, or delete any task. Do not treat tasks as private or exclusively owned by their creator.
+```mermaid
+flowchart TD
+    Dev[Developer] --> Git[Git and GitHub]
+    Git --> Actions[GitHub Actions]
+    Actions --> Tests[npm test]
+    Tests --> Build[Docker image build]
+    Build --> Hub[Docker Hub<br/>paulolutunmbi/taskflow]
+    Hub --> K8s[Minikube Kubernetes]
+    User[Browser / User] --> Service[TaskFlow NodePort Service]
+    Service --> Deploy[TaskFlow Deployment / Pods]
+    Deploy --> App[Node.js / Express :3000]
+    App --> DB[(MongoDB Atlas)]
+    TF[Terraform local configuration] -. local IaC demonstration .-> Local[terraform_data resource]
+    Ansible[Ansible playbook] --> WSL[Ubuntu WSL host configuration]
+    Script[Bash deploy.sh] --> K8s
+```
 
----
+**Deployment flow:** code is committed and pushed to GitHub; GitHub Actions installs dependencies, runs tests, builds the Docker image, and publishes it to Docker Hub for pushes to `main`. The Kubernetes deployment runs the published image in Minikube. The Bash deployment script applies the manifests to the cluster. The application connects to MongoDB Atlas.
 
-## Features
+## 3. Technology stack
 
-- **Shared Task Board**: All visitors read and write to the same MongoDB collection.
-- **Creator Name on Tasks**: Every task shows the display name of the person who created it.
-- **MongoDB Persistence**: Tasks survive server restarts; no in-memory fallback in production.
-- **Task Management**: Create tasks with title, description, priority (`low`, `medium`, `high`), and status (`todo`, `in-progress`, `completed`).
-- **Interactive Controls**: One-click completion toggle, modal editing, and safe deletion with confirmation.
-- **Dynamic Filtering & Search**: Instant filtering by status chips, priority dropdown, and keyword search.
-- **Empty State**: Displays a clear prompt when no tasks exist yet.
-- **Error Handling**: Displays a clear error message and retry button if the database is unavailable. Never shows fake data.
-- **Health Monitoring**: Built-in `/health` and `/health/ready` endpoints reflecting real database connectivity.
+| Area | Technology |
+|---|---|
+| Application runtime | Node.js 24 |
+| Backend | Express |
+| Database | MongoDB Atlas, Mongoose |
+| Version control | Git, GitHub |
+| Automated tests | Node.js built-in test runner |
+| Containerization | Docker |
+| Image registry | Docker Hub |
+| Infrastructure as Code | Terraform |
+| Configuration management | Ansible |
+| Orchestration | Kubernetes, Minikube |
+| CI/CD | GitHub Actions |
+| Automation | Bash |
+| Local Linux environment | Ubuntu on WSL |
 
----
+## 4. Repository structure
 
-## Prerequisites
+```text
+devops-deployment-pipeline/
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yml
+├── ansible/
+│   ├── inventory.ini
+│   └── playbook.yml
+├── docs/
+│   ├── architecture.md
+│   ├── deployment-guide.md
+│   ├── troubleshooting.md
+│   ├── lessons-learned.md
+│   └── demo-guide.md
+├── kubernetes/
+│   ├── namespace.yaml
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── hpa.yaml
+├── scripts/
+│   └── deploy.sh
+├── src/
+│   ├── app.js
+│   ├── server.js
+│   ├── db.js
+│   ├── store.js
+│   ├── models/
+│   └── routes/
+├── public/
+│   ├── index.html
+│   ├── css/
+│   └── js/
+├── terraform/
+│   └── main.tf
+├── test/
+├── .dockerignore
+├── .env.example
+├── .gitignore
+├── Dockerfile
+├── package.json
+├── package-lock.json
+└── README.md
+```
 
-- **Node.js**: Version `20.x` or higher (tested on Node.js `24.x`)
-- **npm**: Version `10.x` or higher
-- **MongoDB Atlas**: A MongoDB Atlas cluster with a valid connection string
+## 5. Run locally
 
----
+### Prerequisites
 
-## Configuration
+- Node.js 24 (Node.js 20+ may work, but the project was tested with Node.js 24)
+- npm
+- A MongoDB Atlas cluster and database user
+- Git
 
-Copy `.env.example` to `.env` and set your MongoDB connection string:
+### Configure environment
+
+Copy the example file and edit the local `.env` file:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Set at least:
 
-```
+```dotenv
+PORT=3000
+NODE_ENV=development
 MONGODB_URI=<your-mongodb-atlas-connection-string>
+MONGODB_DATABASE=taskflow
 ```
 
-> **Security:** Never commit your `.env` file or expose your `MONGODB_URI` in any public repository, log, or frontend code. The `.env` file is listed in `.gitignore`.
+Do not commit `.env`. The repository `.gitignore` excludes it. Never paste credentials into issues, screenshots, reports, or public logs.
 
----
-
-## Installation
+### Install and start
 
 ```bash
-# Clone the repository (if not already cloned)
-git clone <repository-url>
-cd devops-deployment-pipeline
-
-# Install dependencies
-npm install
-```
-
----
-
-## Running the Application
-
-### Development / Local Run
-
-```bash
+npm ci
 npm start
 ```
 
-Or run directly with Node:
+Open `http://localhost:3000`.
 
-```bash
-node src/server.js
-```
-
-By default, the server listens on port `3000`. You can customize the port using the `PORT` environment variable:
-
-```bash
-# PowerShell (Windows)
-$env:PORT="8080"; npm start
-
-# Bash / Linux / macOS
-PORT=8080 npm start
-```
-
-Once started, open your browser and navigate to:
-- **Web UI**: [http://localhost:3000](http://localhost:3000)
-- **Health Endpoint**: [http://localhost:3000/health](http://localhost:3000/health)
-- **Readiness Check**: [http://localhost:3000/health/ready](http://localhost:3000/health/ready)
-
----
-
-## Running Automated Tests
-
-TaskFlow uses Node.js's built-in test runner (`node:test`) and strict assertions (`node:assert/strict`), requiring zero external test runner packages:
+### Run tests
 
 ```bash
 npm test
 ```
 
-### Test Coverage
+The recorded local test run completed with **49 tests passed across 14 suites, with zero failures**. Run the command again before submission and retain the current terminal or Actions result as evidence.
 
-The test suite covers:
-- `/health` endpoint status, metadata, uptime, and headers.
-- Empty board state — confirms no automatic mock-data seeding occurs.
-- `GET /api/tasks` listing, `createdBy` field presence, and filtering by `status`, `priority`, and `search`.
-- `POST /api/tasks` validation: missing/empty title, title length, invalid priority/status, missing/empty/whitespace `createdBy`, `createdBy` trimming, and successful creation with persistence verification.
-- `GET /api/tasks/:id` retrieval and 404/400 handling.
-- `PUT /api/tasks/:id` field updates, validation, and 404 handling.
-- `DELETE /api/tasks/:id` task deletion and subsequent 404 verification.
-- Database failure / 503 behaviour when the database is unavailable (no fake-data fallback).
-- MongoDB connection string credential sanitisation (passwords masked in logs).
-- Mongoose schema validation for all fields including `createdBy`.
+## 6. Docker
 
----
+The Dockerfile uses `node:24-bookworm-slim`, installs production dependencies, runs the app as the non-root `node` user, exposes port 3000, and starts the application with `npm start`.
 
-## Available API Endpoints
+Build and run locally:
 
-### 1. System Health
-
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/health` | Application health and uptime metadata |
-| `GET` | `/health/ready` | Readiness probe (503 if database is disconnected) |
-| `GET` | `/health/live` | Liveness probe (always 200 if the process is running) |
-
-### 2. Task Management API
-
-| Method | Endpoint | Query / Body Params | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/tasks` | `?status=todo`, `?priority=high`, `?search=docker` | List all tasks with optional filters |
-| `GET` | `/api/tasks/:id` | None | Retrieve a single task by ID |
-| `POST` | `/api/tasks` | `{ "title": "...", "description": "...", "priority": "medium", "status": "todo", "createdBy": "Alice" }` | Create a new task (Returns `201 Created`) |
-| `PUT` | `/api/tasks/:id` | `{ "title": "...", "description": "...", "priority": "...", "status": "..." }` | Update an existing task |
-| `DELETE` | `/api/tasks/:id` | None | Delete a task |
-
-#### Validation Rules:
-- `title`: Required string, 1 to 100 characters.
-- `description`: Optional string, max 500 characters.
-- `priority`: Optional string; allowed values are `'low'`, `'medium'`, `'high'` (defaults to `'medium'`).
-- `status`: Optional string; allowed values are `'todo'`, `'in-progress'`, `'completed'` (defaults to `'todo'`).
-- `createdBy`: **Required** string, 1 to 80 characters. Whitespace is trimmed. No email address or account required.
-
----
-
-## Project Structure
-
-```
-devops-deployment-pipeline/
-├── package.json          # Node.js project manifest & scripts
-├── README.md             # Application documentation
-├── .env                  # Local environment config (not committed — contains MONGODB_URI)
-├── .env.example          # Template for environment variables
-├── .gitignore            # Git exclusion rules
-├── src/
-│   ├── app.js            # Express app configuration & middleware
-│   ├── server.js         # HTTP server entry point & graceful shutdown
-│   ├── db.js             # MongoDB connection management
-│   ├── store.js          # Storage layer (MongoDB via Mongoose; in-memory test double for tests)
-│   ├── models/
-│   │   ├── Task.js       # Mongoose Task schema (includes createdBy field)
-│   │   └── Counter.js    # Auto-incrementing numeric ID counter
-│   └── routes/
-│       ├── health.js     # Health check endpoints (/health, /health/ready, /health/live)
-│       └── tasks.js      # Task REST API handlers (/api/tasks)
-├── public/
-│   ├── index.html        # Responsive shared task board UI
-│   ├── css/
-│   │   └── style.css     # Bespoke stylesheet
-│   └── js/
-│       └── app.js        # Vanilla JS frontend controller & API client
-└── test/
-    ├── health.test.js    # Health endpoint automated tests
-    ├── tasks.test.js     # Task CRUD, filter, createdBy, and empty-state tests
-    ├── database.test.js  # Mongoose schema, DB failure, and credential sanitisation tests
-    └── server.test.js    # Server port selection and startup tests
+```bash
+docker build -t taskflow:local .
+docker run --rm -p 3000:3000 --env-file .env taskflow:local
 ```
 
----
+The published Docker Hub repository is:
 
-## Security Considerations
+- `paulolutunmbi/taskflow`
+- `paulolutunmbi/taskflow:latest`
+- A commit-SHA tag is also produced by the GitHub Actions workflow.
 
-- The MongoDB connection string (`MONGODB_URI`) is only used server-side and is never exposed to the browser.
-- Credential sanitisation strips passwords from all MongoDB URIs before logging.
-- This application has no authentication. Do not deploy it with sensitive data.
+Do not put Docker Hub credentials in the Dockerfile or repository. GitHub Actions uses repository secrets named `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+
+## 7. Kubernetes deployment
+
+The Kubernetes resources are stored in `kubernetes/`:
+
+- `namespace.yaml` creates the `taskflow` namespace.
+- `deployment.yaml` defines the TaskFlow pods, container port, environment Secret reference, resource requests/limits, and health probes.
+- `service.yaml` exposes the deployment through a NodePort service.
+- `hpa.yaml` configures a Horizontal Pod Autoscaler with a minimum of 2 replicas, maximum of 5 replicas, and a target average CPU utilization of 50%.
+
+Apply the resources manually:
+
+```bash
+kubectl apply -f kubernetes/namespace.yaml
+kubectl apply -f kubernetes/deployment.yaml
+kubectl apply -f kubernetes/service.yaml
+kubectl apply -f kubernetes/hpa.yaml
+kubectl rollout status deployment/taskflow -n taskflow
+```
+
+Or use the deployment script from Ubuntu WSL:
+
+```bash
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
+```
+
+The script uses `kubectl.exe` and converts WSL paths with `wslpath -m` so Windows `kubectl.exe` can read the manifest paths.
+
+Inspect the deployment:
+
+```bash
+kubectl get nodes
+kubectl get all -n taskflow
+kubectl get hpa -n taskflow
+kubectl describe deployment taskflow -n taskflow
+kubectl logs deployment/taskflow -n taskflow
+```
+
+To obtain a local service URL:
+
+```bash
+minikube service taskflow-service -n taskflow --url
+```
+
+Keep the terminal running if Minikube asks it to maintain a service tunnel.
+
+The application exposes `/health`, `/health/live`, and `/health/ready`. Kubernetes uses the liveness and readiness endpoints configured in the deployment manifest.
+
+## 8. Terraform
+
+Terraform configuration is in `terraform/main.tf`. The submitted configuration uses Terraform's built-in `terraform_data` resource as a **local demonstration** of the Terraform workflow. It does not provision Azure infrastructure or incur cloud charges.
+
+Run:
+
+```bash
+terraform -chdir=terraform fmt -check
+terraform -chdir=terraform init -backend=false
+terraform -chdir=terraform validate
+terraform -chdir=terraform plan
+```
+
+If demonstrating an apply, inspect the plan first and apply only the local configuration:
+
+```bash
+terraform -chdir=terraform apply
+```
+
+The earlier local demonstration was applied and subsequently destroyed. Re-run the commands against the final committed configuration and capture fresh output for assessment. Do not enable the commented Azure example unless cloud access, budget, and instructor approval are available.
+
+## 9. Ansible
+
+Ansible files:
+
+- `ansible/inventory.ini` targets `localhost` using a local connection in Ubuntu WSL.
+- `ansible/playbook.yml` ensures `curl` is installed, creates `/opt/taskflow`, and writes an Ansible-managed information file.
+
+Run from the project directory in WSL:
+
+```bash
+ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --syntax-check
+sudo ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
+```
+
+This demonstrates configuration management on the local WSL host. It is **not** configuration of a remote cloud VM. An idempotent repeat should report no further changes when the machine is already in the desired state.
+
+## 10. GitHub Actions CI/CD
+
+Workflow: `.github/workflows/ci-cd.yml`.
+
+On pushes to `main`, the workflow:
+
+1. Checks out the repository.
+2. Sets up Node.js 24.
+3. Installs dependencies with `npm ci`.
+4. Runs `npm test`.
+5. Sets up Docker Buildx.
+6. Logs in to Docker Hub using GitHub repository secrets.
+7. Builds and pushes `paulolutunmbi/taskflow:latest` and a commit-SHA tag.
+
+For pull requests targeting `main`, tests and the Docker build run, but the image is not pushed. The workflow builds and publishes the image; Kubernetes deployment is performed separately with the deployment script.
+
+The recorded workflow run completed successfully. Recheck the latest run in the repository's **Actions** tab before submission.
+
+## 11. Application features and API
+
+TaskFlow is an unauthenticated shared task board. Tasks are stored in MongoDB Atlas and are shared by all visitors to the same deployment.
+
+Features include task creation, editing, completion, deletion, status and priority filtering, keyword search, empty-state handling, database error handling, and health checks.
+
+### Health endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/health` | Application health and uptime metadata |
+| GET | `/health/live` | Liveness check |
+| GET | `/health/ready` | Readiness check; returns unavailable when the database is disconnected |
+
+### Task endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/tasks` | List tasks; supports status, priority, and search filters |
+| GET | `/api/tasks/:id` | Retrieve one task |
+| POST | `/api/tasks` | Create a task |
+| PUT | `/api/tasks/:id` | Update a task |
+| DELETE | `/api/tasks/:id` | Delete a task |
+
+Task fields include title, description, priority (`low`, `medium`, `high`), status (`todo`, `in-progress`, `completed`), and required display name (`createdBy`).
+
+## 12. Security and limitations
+
+- The application currently has no authentication or per-user authorization. Anyone who can access the board can interact with shared tasks.
+- Store MongoDB credentials in environment variables or Kubernetes Secrets; never commit them.
+- The Kubernetes Secret referenced by the deployment must be created in the `taskflow` namespace using the deployment environment's own secure values. Do not include Secret values in this repository.
+- The local Terraform demonstration does not create cloud infrastructure.
+- Ansible targets the local WSL host, not a remote server.
+- GitHub Actions publishes the image but does not automatically deploy it to Kubernetes.
+- Minikube is a local Kubernetes environment, not a production cloud cluster.
+
+## 13. Supporting documentation
+
+See the `docs/` directory:
+
+- [Architecture](docs/architecture.md)
+- [Deployment guide](docs/deployment-guide.md)
+- [Troubleshooting report](docs/troubleshooting.md)
+- [Lessons learned and future improvements](docs/lessons-learned.md)
+

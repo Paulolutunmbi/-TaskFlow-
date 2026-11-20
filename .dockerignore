@@ -6,3 +6,5 @@ npm-debug.log*
 .env.*
 !.env.example
 coverage
+
+docs/demo-guide.md
